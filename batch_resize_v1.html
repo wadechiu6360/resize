@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>自動化影片轉檔產生器 (含預覽)</title>
+    <title>自動化影片轉檔產生器 (完整修正版)</title>
     <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.7/dist/umd/ffmpeg.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -16,7 +16,7 @@
         input[type="file"], input[type="number"] { width: 100%; padding: 8px; margin-bottom: 5px; box-sizing: border-box; }
         .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
         .col { background: #fafafa; padding: 15px; border-radius: 8px; border: 1px solid #ddd; }
-        .help-text { font-size: 0.85rem; color: #666; margin-bottom: 10px; display: block; }
+        .help-text { font-size: 0.85rem; color: #666; margin-bottom: 10px; display: block; line-height: 1.5; }
         
         /* 預覽視窗 CSS */
         .preview-wrapper { width: 100%; background: #333; border-radius: 4px; overflow: hidden; position: relative; margin-top: 15px; border: 1px dashed #999; }
@@ -49,11 +49,12 @@
 
     <div class="section">
         <h2>2. Frame 邊框上傳 & 位置調節預覽</h2>
-        <p class="help-text">💡 <strong>調節說明：</strong><br>
-            - <strong>影片縮放 (Scale)：</strong> `1.0` 代表 100% 原尺寸，`0.5` 代表縮小一半，`1.5` 代表放大 1.5 倍。<br>
-            - <strong>X偏移量 (水平)：</strong> `0` 為正中間。正數 (如 `100`) 影片往右移，負數 (如 `-100`) 影片往左移。<br>
-            - <strong>Y偏移量 (垂直)：</strong> `0` 為正中間。正數 (如 `100`) 影片往下移，負數 (如 `-100`) 影片往上移。
-        </p>
+        <div class="help-text">
+            💡 <strong>參數調節說明：</strong><br>
+            • <strong>影片縮放 (Scale)：</strong> 以原本的 9:16 影片大小為基準。輸入 <code>1.0</code> 代表 100% 原尺寸；<code>0.5</code> 代表縮小一半；<code>1.5</code> 代表放大 1.5 倍。<br>
+            • <strong>X 偏移量 (水平移動)：</strong> 預設為 <code>0</code> (正中間)。正數 (如 <code>100</code>) 將影片往右移動，負數 (如 <code>-100</code>) 將影片往左移動。<br>
+            • <strong>Y 偏移量 (垂直移動)：</strong> 預設為 <code>0</code> (正中間)。正數 (如 <code>100</code>) 將影片往下移動，負數 (如 <code>-100</code>) 將影片往上移動。
+        </div>
         <div class="grid">
             <div class="col">
                 <h3>1:1 (1080x1080)</h3>
@@ -129,7 +130,7 @@
         const resolutions = { '1x1': {w: 1080, h: 1080}, '16x9': {w: 1920, h: 1080}, '9x16': {w: 1080, h: 1920} };
         let currentVideoURL = '';
 
-        // 縮放預覽畫布以適應網頁 UI
+        // 縮放預覽畫布以適應網頁網格 UI
         function scalePreviewCanvas() {
             ratios.forEach(r => {
                 const wrap = document.getElementById(`wrap${r}`);
@@ -141,7 +142,7 @@
         window.addEventListener('resize', scalePreviewCanvas);
         scalePreviewCanvas();
 
-        // 更新影片位置與縮放
+        // 更新預覽視窗中的影片位置與大小
         function updatePreview(ratio) {
             const vid = document.getElementById(`vid${ratio}`);
             const scale = parseFloat(document.getElementById(`scale${ratio}`).value) || 1;
@@ -150,9 +151,9 @@
             
             const canvasW = resolutions[ratio].w;
             const canvasH = resolutions[ratio].h;
-            const vidW = 1080; const vidH = 1920; // 預設輸入均為 9:16
+            const vidW = 1080; const vidH = 1920; // 預設輸入素材均為 9:16
 
-            // 置中邏輯
+            // FFmpeg 預設的置中邏輯基準點
             const baseLeft = (canvasW - vidW) / 2;
             const baseTop = (canvasH - vidH) / 2;
             
@@ -161,12 +162,12 @@
             vid.style.transform = `translate(${dx}px, ${dy}px) scale(${scale})`;
         }
 
-        // 綁定輸入事件
+        // 綁定輸入控制事件
         document.querySelectorAll('.param-input').forEach(input => {
             input.addEventListener('input', (e) => updatePreview(e.target.dataset.ratio));
         });
 
-        // 處理影片上傳預覽
+        // 處理上傳影片後的即時預覽載入
         document.getElementById('inputVideos').addEventListener('change', function(e) {
             if(e.target.files.length > 0) {
                 if(currentVideoURL) URL.revokeObjectURL(currentVideoURL);
@@ -179,7 +180,7 @@
             }
         });
 
-        // 處理 Frame 圖片預覽
+        // 處理 Frame 邊框上傳後的即時預覽疊加
         document.querySelectorAll('.frame-upload').forEach(input => {
             input.addEventListener('change', function(e) {
                 const ratio = this.dataset.ratio;
@@ -189,7 +190,7 @@
             });
         });
 
-        // === FFmpeg 核心邏輯 (修復 GitHub Pages Worker 錯誤) ===
+        // === FFmpeg 核心邏輯 (已解決 GitHub Pages Worker CORS 限制問題) ===
         const { FFmpeg } = FFmpegWASM;
         const { fetchFile, toBlobURL } = FFmpegUtil;
         let ffmpeg = null;
@@ -207,14 +208,15 @@
             ffmpeg = new FFmpeg();
             ffmpeg.on('log', ({ message }) => log(`[FFmpeg] ${message}`));
             
-            const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
-            const ffmpegURL = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.7/dist/umd';
+            // 統一核心與套件來源
+            const coreBase = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd';
+            const ffmpegBase = 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.7/dist/umd';
             
-            // 使用 toBlobURL 將檔案抓下來轉為本地 Blob，徹底解決 GitHub Pages 的 CORS Worker 問題
+            // 💡 關鍵修正：藉由加入 classWorkerURL 參數，強制將 814.ffmpeg.js 在本地轉換為 Blob 物件，完全避免 CORS 阻擋。
             await ffmpeg.load({
-                coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-                wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
-                workerURL: await toBlobURL(`${ffmpegURL}/814.ffmpeg.js`, 'text/javascript')
+                coreURL: await toBlobURL(`${coreBase}/ffmpeg-core.js`, 'text/javascript'),
+                wasmURL: await toBlobURL(`${coreBase}/ffmpeg-core.wasm`, 'application/wasm'),
+                classWorkerURL: await toBlobURL(`${ffmpegBase}/814.ffmpeg.js`, 'text/javascript')
             });
             log("FFmpeg 載入完成！");
         }
@@ -231,6 +233,7 @@
             });
         }
 
+        // 點擊按鈕執行批量轉檔與打包
         document.getElementById('processBtn').addEventListener('click', async () => {
             const btn = document.getElementById('processBtn');
             const videos = document.getElementById('inputVideos').files;
@@ -259,6 +262,7 @@
                     const originalName = videoFile.name.split('.').slice(0, -1).join('.');
                     const vDuration = await getVideoDuration(videoFile);
                     
+                    // 根據需求進行的時間軸判斷邏輯
                     let endcutDuration = Math.max(minEndcut, targetDur - vDuration);
                     log(`▶ 開始處理: ${originalName} (原長: ${vDuration.toFixed(2)}s, Endcut: ${endcutDuration.toFixed(2)}s)`);
 
@@ -273,7 +277,7 @@
                         const w = resolutions[ratio].w;
                         const h = resolutions[ratio].h;
 
-                        // FFmpeg 指令合成邏輯
+                        // FFmpeg 指令合成複雜過濾器圖表
                         let filterGraph = `
                             [0:v]scale=iw*${scale}:ih*${scale}[v_scaled];
                             color=c=black:s=${w}x${h}:d=${vDuration}[bg];
@@ -283,7 +287,7 @@
                             [v_framed][endcut_v]concat=n=2:v=1:a=0[outv]
                         `.replace(/\n/g, '').replace(/\s+/g, '');
                         
-                        // 若有上傳音檔則加入音軌延遲
+                        // 若有加入音檔，在 Endcut 階段加入對應的音軌延遲
                         let maps = ['-map', '[outv]'];
                         if (audioFile) {
                             filterGraph += `;[3:a]adelay=${vDuration*1000}|${vDuration*1000}[delayed_a]`;
