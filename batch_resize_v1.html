@@ -1,4 +1,317 @@
-<script type="module">
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>影片批次處理工具 | 專業版</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    
+    <style>
+        /* 基礎全域設定 */
+        :root {
+            --primary: #4361ee;
+            --primary-hover: #3a53d0;
+            --bg-color: #f4f7f9;
+            --text-main: #2b2d42;
+            --text-muted: #8d99ae;
+            --card-bg: #ffffff;
+            --border-radius: 12px;
+            --transition: all 0.3s ease;
+        }
+
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; 
+            padding: 30px 20px; 
+            max-width: 1200px; 
+            margin: auto; 
+            background-color: var(--bg-color); 
+            color: var(--text-main);
+            line-height: 1.6;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 2.2rem;
+            margin-bottom: 30px;
+            color: var(--text-main);
+            font-weight: 800;
+            letter-spacing: -0.5px;
+        }
+
+        /* 卡片設計 */
+        .section { 
+            background: var(--card-bg); 
+            padding: 25px 30px; 
+            margin-bottom: 25px; 
+            border-radius: var(--border-radius); 
+            box-shadow: 0 8px 30px rgba(0,0,0,0.04); 
+            border: 1px solid rgba(0,0,0,0.02);
+        }
+        
+        h2 { 
+            border-bottom: 2px solid #edf2f4; 
+            padding-bottom: 12px; 
+            margin-top: 0; 
+            font-size: 1.3rem; 
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        label { 
+            display: block; 
+            margin: 12px 0 6px; 
+            font-weight: 600; 
+            font-size: 0.95rem;
+            color: #4a4e69;
+        }
+
+        /* 輸入框與按鈕美化 */
+        input[type="file"], input[type="number"] { 
+            width: 100%; 
+            padding: 10px 12px; 
+            margin-bottom: 10px; 
+            box-sizing: border-box; 
+            border: 1px solid #ced4da;
+            border-radius: 8px;
+            background-color: #f8f9fa;
+            transition: var(--transition);
+            font-family: inherit;
+        }
+        
+        input[type="file"]:hover, input[type="number"]:focus {
+            border-color: var(--primary);
+            background-color: #fff;
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.15);
+        }
+
+        .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+        .col { 
+            background: #fdfdfd; 
+            padding: 20px; 
+            border-radius: 10px; 
+            border: 1px solid #eaebed; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.02);
+        }
+        
+        .col h3 {
+            margin-top: 0;
+            text-align: center;
+            color: #2b2d42;
+            font-size: 1.1rem;
+            background: #edf2f4;
+            padding: 8px;
+            border-radius: 6px;
+        }
+
+        .help-text { 
+            font-size: 0.9rem; 
+            color: var(--text-muted); 
+            background: #eef2ff;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px; 
+            border-left: 4px solid var(--primary);
+        }
+
+        /* 預覽視窗 */
+        .preview-wrapper { 
+            width: 100%; 
+            background: #1a1a1a; 
+            border-radius: 8px; 
+            overflow: hidden; 
+            position: relative; 
+            margin-top: 20px; 
+            border: 2px dashed #4a4e69; 
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+        }
+        .preview-wrapper.r1x1 { aspect-ratio: 1/1; }
+        .preview-wrapper.r16x9 { aspect-ratio: 16/9; }
+        .preview-wrapper.r9x16 { aspect-ratio: 9/16; }
+        .preview-canvas { position: absolute; top: 0; left: 0; transform-origin: top left; background: #000; overflow: hidden; }
+        .preview-vid { position: absolute; }
+        .preview-frm { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+
+        /* 主要按鈕 */
+        button { 
+            background: linear-gradient(135deg, var(--primary), var(--primary-hover)); 
+            color: white; 
+            border: none; 
+            padding: 18px 20px; 
+            font-size: 1.1rem; 
+            border-radius: 10px; 
+            cursor: pointer; 
+            width: 100%; 
+            font-weight: bold;
+            letter-spacing: 1px;
+            transition: var(--transition);
+            box-shadow: 0 4px 15px rgba(67, 97, 238, 0.3);
+        }
+        button:hover { 
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(67, 97, 238, 0.4);
+        }
+        button:disabled { 
+            background: #b0b3c6; 
+            cursor: not-allowed; 
+            transform: none;
+            box-shadow: none;
+        }
+
+        /* Console 終端機日誌 */
+        #log-container {
+            margin-top: 25px;
+            border-radius: var(--border-radius);
+            overflow: hidden;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.1);
+        }
+        .log-header {
+            background: #2b2d42;
+            color: #fff;
+            padding: 10px 15px;
+            font-size: 0.9rem;
+            font-family: monospace;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .log-dot {
+            width: 10px; height: 10px; border-radius: 50%; display: inline-block;
+        }
+        .dot-red { background: #ff5f56; }
+        .dot-yellow { background: #ffbd2e; }
+        .dot-green { background: #27c93f; }
+        
+        #log { 
+            background: #1e1e1e; 
+            color: #4af626; 
+            padding: 15px; 
+            height: 200px; 
+            overflow-y: auto; 
+            font-family: 'Courier New', Courier, monospace; 
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+        #log div { border-bottom: 1px solid rgba(255,255,255,0.05); padding: 4px 0; }
+        
+        /* 捲軸美化 */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+        #log::-webkit-scrollbar-track { background: #1a1a1a; }
+        #log::-webkit-scrollbar-thumb { background: #444; }
+    </style>
+</head>
+<body>
+
+    <h1>✨ 影片批次處理工具 <span style="font-size: 1rem; color: #8d99ae; font-weight: normal;">v4.0 終極穩定版</span></h1>
+
+    <div class="section">
+        <h2>🎬 1. 影片與音檔上傳</h2>
+        <label>上傳 9:16 影片 (可多選，預覽會取第一支):</label>
+        <input type="file" id="inputVideos" accept="video/*" multiple>
+        
+        <label>上傳 Endcut 音效檔 (壓在結尾):</label>
+        <input type="file" id="inputAudio" accept="audio/*">
+    </div>
+
+    <div class="section">
+        <h2>🖼️ 2. 邊框上傳 & 位置預覽</h2>
+        <div class="help-text">
+            💡 <strong>參數調節說明：</strong><br>
+            • <strong>預設狀態：</strong> 影片高度會<strong>自動等於</strong>輸出畫布的高度（寬度按比例縮放並置中）。<br>
+            • <strong>影片縮放 (Scale)：</strong> <code>1.0</code> 代表剛好填滿高度；<code>0.5</code> 代表縮小一半；<code>1.2</code> 代表放大。<br>
+            • <strong>X / Y 偏移：</strong> 預設為 <code>0</code> (正中間)。正數向右/下，負數向左/上。
+        </div>
+        <div class="grid">
+            <div class="col">
+                <h3>1:1 格式</h3>
+                <label>Frame 圖檔:</label>
+                <input type="file" id="frame1x1" accept="image/*" class="frame-upload" data-ratio="1x1">
+                <label>縮放 (Scale):</label> <input type="number" id="scale1x1" value="1.0" step="0.1" class="param-input" data-ratio="1x1">
+                <div style="display: flex; gap: 10px;">
+                    <div style="flex:1"><label>X 偏移:</label> <input type="number" id="x1x1" value="0" class="param-input" data-ratio="1x1"></div>
+                    <div style="flex:1"><label>Y 偏移:</label> <input type="number" id="y1x1" value="0" class="param-input" data-ratio="1x1"></div>
+                </div>
+                
+                <div class="preview-wrapper r1x1" id="wrap1x1">
+                    <div class="preview-canvas" id="canvas1x1" style="width: 1080px; height: 1080px;">
+                        <video class="preview-vid" id="vid1x1" muted loop autoplay></video>
+                        <img class="preview-frm" id="frm1x1">
+                    </div>
+                </div>
+            </div>
+
+            <div class="col">
+                <h3>16:9 格式</h3>
+                <label>Frame 圖檔:</label>
+                <input type="file" id="frame16x9" accept="image/*" class="frame-upload" data-ratio="16x9">
+                <label>縮放 (Scale):</label> <input type="number" id="scale16x9" value="1.0" step="0.1" class="param-input" data-ratio="16x9">
+                <div style="display: flex; gap: 10px;">
+                    <div style="flex:1"><label>X 偏移:</label> <input type="number" id="x16x9" value="0" class="param-input" data-ratio="16x9"></div>
+                    <div style="flex:1"><label>Y 偏移:</label> <input type="number" id="y16x9" value="0" class="param-input" data-ratio="16x9"></div>
+                </div>
+                
+                <div class="preview-wrapper r16x9" id="wrap16x9">
+                    <div class="preview-canvas" id="canvas16x9" style="width: 1920px; height: 1080px;">
+                        <video class="preview-vid" id="vid16x9" muted loop autoplay></video>
+                        <img class="preview-frm" id="frm16x9">
+                    </div>
+                </div>
+            </div>
+
+            <div class="col">
+                <h3>9:16 格式</h3>
+                <label>Frame 圖檔:</label>
+                <input type="file" id="frame9x16" accept="image/*" class="frame-upload" data-ratio="9x16">
+                <label>縮放 (Scale):</label> <input type="number" id="scale9x16" value="1.0" step="0.1" class="param-input" data-ratio="9x16">
+                <div style="display: flex; gap: 10px;">
+                    <div style="flex:1"><label>X 偏移:</label> <input type="number" id="x9x16" value="0" class="param-input" data-ratio="9x16"></div>
+                    <div style="flex:1"><label>Y 偏移:</label> <input type="number" id="y9x16" value="0" class="param-input" data-ratio="9x16"></div>
+                </div>
+                
+                <div class="preview-wrapper r9x16" id="wrap9x16">
+                    <div class="preview-canvas" id="canvas9x16" style="width: 1080px; height: 1920px;">
+                        <video class="preview-vid" id="vid9x16" muted loop autoplay></video>
+                        <img class="preview-frm" id="frm9x16">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>⏱️ 3. Endcut 結尾圖與時間設定</h2>
+        <div class="grid">
+            <div><label>1:1 Endcut (圖片):</label><input type="file" id="endcut1x1" accept="image/*"></div>
+            <div><label>16:9 Endcut (圖片):</label><input type="file" id="endcut16x9" accept="image/*"></div>
+            <div><label>9:16 Endcut (圖片):</label><input type="file" id="endcut9x16" accept="image/*"></div>
+        </div>
+        <hr style="border: 0; border-top: 1px solid #eaebed; margin: 20px 0;">
+        <div style="display: flex; gap: 30px;">
+            <div style="flex: 1;"><label>預設總影片秒數 (秒):</label><input type="number" id="targetDuration" value="15" min="1"></div>
+            <div style="flex: 1;"><label>Endcut 最短秒數 (秒):</label><input type="number" id="minEndcutDuration" value="1" min="1"></div>
+        </div>
+    </div>
+
+    <button id="processBtn">🚀 開始轉檔並下載壓縮檔</button>
+
+    <div id="log-container">
+        <div class="log-header">
+            <span class="log-dot dot-red"></span>
+            <span class="log-dot dot-yellow"></span>
+            <span class="log-dot dot-green"></span>
+            <span style="margin-left: 10px;">系統狀態控制台 (Terminal)</span>
+        </div>
+        <div id="log">等待操作中...</div>
+    </div>
+
+    <script type="module">
         import { FFmpeg } from 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js';
         import { fetchFile, toBlobURL } from 'https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js';
 
@@ -6,7 +319,6 @@
         const resolutions = { '1x1': {w: 1080, h: 1080}, '16x9': {w: 1920, h: 1080}, '9x16': {w: 1080, h: 1920} };
         let currentVideoURL = '';
 
-        // 縮放網頁上的預覽畫布
         function scalePreviewCanvas() {
             ratios.forEach(r => {
                 const wrap = document.getElementById(`wrap${r}`);
@@ -20,7 +332,6 @@
         window.addEventListener('resize', scalePreviewCanvas);
         setTimeout(scalePreviewCanvas, 500);
 
-        // 計算高度填滿後的縮放比例與置中位置
         function updatePreview(ratio) {
             const vid = document.getElementById(`vid${ratio}`);
             if (!vid) return;
@@ -30,10 +341,8 @@
             
             const canvasW = resolutions[ratio].w;
             const canvasH = resolutions[ratio].h;
-
             const targetVidH = canvasH;
             const targetVidW = targetVidH * (9 / 16);
-
             const baseLeft = (canvasW - targetVidW) / 2;
             const baseTop = 0; 
             
@@ -41,7 +350,6 @@
             vid.style.height = `${targetVidH}px`;
             vid.style.left = `${baseLeft}px`;
             vid.style.top = `${baseTop}px`;
-            
             vid.style.transform = `translate(${dx}px, ${dy}px) scale(${userScale})`;
         }
 
@@ -73,7 +381,6 @@
             });
         });
 
-        // 核心邏輯區
         let ffmpeg = null;
         const logEl = document.getElementById('log');
         
@@ -91,13 +398,11 @@
             
             ffmpeg.on('log', ({ message }) => log(`⚙️ ${message}`));
             
-            // 定義核心與 Worker 的來源網址
             const coreBaseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
             const ffmpegBaseURL = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm';
             
-            log("⏳ 正在下載並掛載模組 (避開 GitHub CORS 限制，首次載入請稍候)...");
+            log("⏳ 正在下載並掛載模組 (避開 GitHub 限制，首次載入請稍候)...");
             
-            // 關鍵修正：將 worker.js 也轉換為 Blob URL 來避開 Worker 的跨網域阻擋
             await ffmpeg.load({
                 coreURL: await toBlobURL(`${coreBaseURL}/ffmpeg-core.js`, 'text/javascript'),
                 wasmURL: await toBlobURL(`${coreBaseURL}/ffmpeg-core.wasm`, 'application/wasm'),
@@ -139,7 +444,6 @@
                     await ffmpeg.writeFile('audio.mp3', await fetchFile(audioFile));
                 }
 
-                // 將使用者有上傳的圖片寫入虛擬系統
                 for (let ratio of ratios) {
                     const frameFile = document.getElementById(`frame${ratio}`).files[0];
                     const endcutFile = document.getElementById(`endcut${ratio}`).files[0];
@@ -164,7 +468,6 @@
                         const frameFile = document.getElementById(`frame${ratio}`).files[0];
                         const endcutFile = document.getElementById(`endcut${ratio}`).files[0];
 
-                        // 防呆：如果該比例沒上傳完整圖檔，就跳過
                         if (!frameFile || !endcutFile) {
                             log(`⚠️ 略過 [${ratio}] 格式：因未完整上傳對應的 Frame 或 Endcut 圖檔。`);
                             continue;
@@ -245,3 +548,5 @@
             }
         });
     </script>
+</body>
+</html>
