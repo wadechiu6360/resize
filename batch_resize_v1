@@ -3,114 +3,198 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>自動化影片轉檔產生器 (1:1, 16:9, 9:16)</title>
+    <title>自動化影片轉檔產生器 (含預覽)</title>
     <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.7/dist/umd/ffmpeg.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; max-width: 900px; margin: auto; background-color: #f9f9f9; }
-        .section { background: white; padding: 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        h2 { border-bottom: 2px solid #333; padding-bottom: 5px; margin-top: 0; font-size: 1.2rem;}
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; max-width: 1200px; margin: auto; background-color: #f0f2f5; }
+        .section { background: white; padding: 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        h2 { border-bottom: 2px solid #333; padding-bottom: 8px; margin-top: 0; font-size: 1.2rem; }
         label { display: block; margin: 10px 0 5px; font-weight: bold; }
-        input[type="file"], input[type="number"] { width: 100%; padding: 8px; margin-bottom: 10px; box-sizing: border-box; }
-        .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; }
-        .params { display: flex; gap: 10px; }
-        .params input { flex: 1; }
-        button { background: #007BFF; color: white; border: none; padding: 15px 20px; font-size: 16px; border-radius: 5px; cursor: pointer; width: 100%; }
+        input[type="file"], input[type="number"] { width: 100%; padding: 8px; margin-bottom: 5px; box-sizing: border-box; }
+        .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+        .col { background: #fafafa; padding: 15px; border-radius: 8px; border: 1px solid #ddd; }
+        .help-text { font-size: 0.85rem; color: #666; margin-bottom: 10px; display: block; }
+        
+        /* 預覽視窗 CSS */
+        .preview-wrapper { width: 100%; background: #333; border-radius: 4px; overflow: hidden; position: relative; margin-top: 15px; border: 1px dashed #999; }
+        .preview-wrapper.r1x1 { aspect-ratio: 1/1; }
+        .preview-wrapper.r16x9 { aspect-ratio: 16/9; }
+        .preview-wrapper.r9x16 { aspect-ratio: 9/16; }
+        /* 內部真實解析度畫布 */
+        .preview-canvas { position: absolute; top: 0; left: 0; transform-origin: top left; background: #000; overflow: hidden; }
+        .preview-vid { position: absolute; }
+        .preview-frm { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+
+        button { background: #007BFF; color: white; border: none; padding: 15px 20px; font-size: 16px; border-radius: 5px; cursor: pointer; width: 100%; font-weight: bold;}
         button:hover { background: #0056b3; }
         button:disabled { background: #ccc; cursor: not-allowed; }
-        #log { background: #333; color: #0f0; padding: 15px; border-radius: 5px; height: 150px; overflow-y: auto; font-family: monospace; margin-top: 20px;}
+        #log { background: #1e1e1e; color: #4af626; padding: 15px; border-radius: 5px; height: 150px; overflow-y: auto; font-family: monospace; margin-top: 20px;}
     </style>
 </head>
 <body>
 
-    <h1>影片批次處理工具</h1>
+    <h1>影片批次處理工具 (含即時預覽)</h1>
 
     <div class="section">
-        <h2>1. 影片與音檔上傳</h2>
-        <label>上傳 9:16 影片 (可多選):</label>
+        <h2>1. 影片與音檔上傳 (作為預覽來源)</h2>
+        <label>上傳 9:16 影片 (可多選，預覽會取第一支):</label>
         <input type="file" id="inputVideos" accept="video/*" multiple>
         
-        <label>上傳 Endcut 音效檔:</label>
+        <label>上傳 Endcut 音效檔 (壓在結尾):</label>
         <input type="file" id="inputAudio" accept="audio/*">
     </div>
 
     <div class="section">
-        <h2>2. Frame 邊框上傳 (PNG 去背佳) & 影片參數調整</h2>
+        <h2>2. Frame 邊框上傳 & 位置調節預覽</h2>
+        <p class="help-text">💡 <strong>調節說明：</strong><br>
+            - <strong>影片縮放 (Scale)：</strong> `1.0` 代表 100% 原尺寸，`0.5` 代表縮小一半，`1.5` 代表放大 1.5 倍。<br>
+            - <strong>X偏移量 (水平)：</strong> `0` 為正中間。正數 (如 `100`) 影片往右移，負數 (如 `-100`) 影片往左移。<br>
+            - <strong>Y偏移量 (垂直)：</strong> `0` 為正中間。正數 (如 `100`) 影片往下移，負數 (如 `-100`) 影片往上移。
+        </p>
         <div class="grid">
-            <div>
-                <label>1:1 Frame:</label>
-                <input type="file" id="frame1x1" accept="image/*">
-                <div class="params">
-                    <input type="number" id="scale1x1" placeholder="影片縮放(例如 1.0)" value="1.0" step="0.1">
-                    <input type="number" id="x1x1" placeholder="X偏移(預設中心: 0)" value="0">
-                    <input type="number" id="y1x1" placeholder="Y偏移(預設中心: 0)" value="0">
+            <div class="col">
+                <h3>1:1 (1080x1080)</h3>
+                <label>Frame 圖檔:</label>
+                <input type="file" id="frame1x1" accept="image/*" class="frame-upload" data-ratio="1x1">
+                <label>縮放 (Scale):</label> <input type="number" id="scale1x1" value="1.0" step="0.1" class="param-input" data-ratio="1x1">
+                <label>X 偏移 (向右為正):</label> <input type="number" id="x1x1" value="0" class="param-input" data-ratio="1x1">
+                <label>Y 偏移 (向下為正):</label> <input type="number" id="y1x1" value="0" class="param-input" data-ratio="1x1">
+                
+                <div class="preview-wrapper r1x1" id="wrap1x1">
+                    <div class="preview-canvas" id="canvas1x1" style="width: 1080px; height: 1080px;">
+                        <video class="preview-vid" id="vid1x1" style="width: 1080px; height: 1920px;" muted loop autoplay></video>
+                        <img class="preview-frm" id="frm1x1">
+                    </div>
                 </div>
             </div>
-            <div>
-                <label>16:9 Frame:</label>
-                <input type="file" id="frame16x9" accept="image/*">
-                <div class="params">
-                    <input type="number" id="scale16x9" placeholder="影片縮放(例如 1.0)" value="1.0" step="0.1">
-                    <input type="number" id="x16x9" placeholder="X偏移(預設中心: 0)" value="0">
-                    <input type="number" id="y16x9" placeholder="Y偏移(預設中心: 0)" value="0">
+
+            <div class="col">
+                <h3>16:9 (1920x1080)</h3>
+                <label>Frame 圖檔:</label>
+                <input type="file" id="frame16x9" accept="image/*" class="frame-upload" data-ratio="16x9">
+                <label>縮放 (Scale):</label> <input type="number" id="scale16x9" value="1.0" step="0.1" class="param-input" data-ratio="16x9">
+                <label>X 偏移 (向右為正):</label> <input type="number" id="x16x9" value="0" class="param-input" data-ratio="16x9">
+                <label>Y 偏移 (向下為正):</label> <input type="number" id="y16x9" value="0" class="param-input" data-ratio="16x9">
+                
+                <div class="preview-wrapper r16x9" id="wrap16x9">
+                    <div class="preview-canvas" id="canvas16x9" style="width: 1920px; height: 1080px;">
+                        <video class="preview-vid" id="vid16x9" style="width: 1080px; height: 1920px;" muted loop autoplay></video>
+                        <img class="preview-frm" id="frm16x9">
+                    </div>
                 </div>
             </div>
-            <div>
-                <label>9:16 Frame:</label>
-                <input type="file" id="frame9x16" accept="image/*">
-                <div class="params">
-                    <input type="number" id="scale9x16" placeholder="影片縮放(例如 1.0)" value="1.0" step="0.1">
-                    <input type="number" id="x9x16" placeholder="X偏移(預設中心: 0)" value="0">
-                    <input type="number" id="y9x16" placeholder="Y偏移(預設中心: 0)" value="0">
+
+            <div class="col">
+                <h3>9:16 (1080x1920)</h3>
+                <label>Frame 圖檔:</label>
+                <input type="file" id="frame9x16" accept="image/*" class="frame-upload" data-ratio="9x16">
+                <label>縮放 (Scale):</label> <input type="number" id="scale9x16" value="1.0" step="0.1" class="param-input" data-ratio="9x16">
+                <label>X 偏移 (向右為正):</label> <input type="number" id="x9x16" value="0" class="param-input" data-ratio="9x16">
+                <label>Y 偏移 (向下為正):</label> <input type="number" id="y9x16" value="0" class="param-input" data-ratio="9x16">
+                
+                <div class="preview-wrapper r9x16" id="wrap9x16">
+                    <div class="preview-canvas" id="canvas9x16" style="width: 1080px; height: 1920px;">
+                        <video class="preview-vid" id="vid9x16" style="width: 1080px; height: 1920px;" muted loop autoplay></video>
+                        <img class="preview-frm" id="frm9x16">
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
     <div class="section">
-        <h2>3. Endcut 結尾圖上傳</h2>
+        <h2>3. Endcut 結尾圖與時間設定</h2>
         <div class="grid">
-            <div>
-                <label>1:1 Endcut:</label>
-                <input type="file" id="endcut1x1" accept="image/*,video/*">
-            </div>
-            <div>
-                <label>16:9 Endcut:</label>
-                <input type="file" id="endcut16x9" accept="image/*,video/*">
-            </div>
-            <div>
-                <label>9:16 Endcut:</label>
-                <input type="file" id="endcut9x16" accept="image/*,video/*">
-            </div>
+            <div><label>1:1 Endcut (圖片):</label><input type="file" id="endcut1x1" accept="image/*"></div>
+            <div><label>16:9 Endcut (圖片):</label><input type="file" id="endcut16x9" accept="image/*"></div>
+            <div><label>9:16 Endcut (圖片):</label><input type="file" id="endcut9x16" accept="image/*"></div>
+        </div>
+        <hr style="border: 0; border-top: 1px solid #eee; margin: 15px 0;">
+        <div style="display: flex; gap: 20px;">
+            <div style="flex: 1;"><label>預設總影片秒數 (秒):</label><input type="number" id="targetDuration" value="15" min="1"></div>
+            <div style="flex: 1;"><label>Endcut 最短秒數 (秒):</label><input type="number" id="minEndcutDuration" value="1" min="1"></div>
         </div>
     </div>
 
-    <div class="section">
-        <h2>4. 輸出時間設定</h2>
-        <div class="params">
-            <div>
-                <label>預設總影片秒數:</label>
-                <input type="number" id="targetDuration" value="15" min="1">
-            </div>
-            <div>
-                <label>Endcut 最短秒數:</label>
-                <input type="number" id="minEndcutDuration" value="1" min="1">
-            </div>
-        </div>
-    </div>
-
-    <button id="processBtn">開始處理並下載壓縮檔</button>
+    <button id="processBtn">開始轉檔並下載壓縮檔</button>
 
     <div id="log">系統準備就緒...</div>
 
     <script>
-        const { FFmpeg } = FFmpegWASM;
-        const { fetchFile } = FFmpegUtil;
-        let ffmpeg = null;
+        // === 預覽與 UI 邏輯 ===
+        const ratios = ['1x1', '16x9', '9x16'];
+        const resolutions = { '1x1': {w: 1080, h: 1080}, '16x9': {w: 1920, h: 1080}, '9x16': {w: 1080, h: 1920} };
+        let currentVideoURL = '';
 
+        // 縮放預覽畫布以適應網頁 UI
+        function scalePreviewCanvas() {
+            ratios.forEach(r => {
+                const wrap = document.getElementById(`wrap${r}`);
+                const canvas = document.getElementById(`canvas${r}`);
+                const scale = wrap.clientWidth / resolutions[r].w;
+                canvas.style.transform = `scale(${scale})`;
+            });
+        }
+        window.addEventListener('resize', scalePreviewCanvas);
+        scalePreviewCanvas();
+
+        // 更新影片位置與縮放
+        function updatePreview(ratio) {
+            const vid = document.getElementById(`vid${ratio}`);
+            const scale = parseFloat(document.getElementById(`scale${ratio}`).value) || 1;
+            const dx = parseFloat(document.getElementById(`x${ratio}`).value) || 0;
+            const dy = parseFloat(document.getElementById(`y${ratio}`).value) || 0;
+            
+            const canvasW = resolutions[ratio].w;
+            const canvasH = resolutions[ratio].h;
+            const vidW = 1080; const vidH = 1920; // 預設輸入均為 9:16
+
+            // 置中邏輯
+            const baseLeft = (canvasW - vidW) / 2;
+            const baseTop = (canvasH - vidH) / 2;
+            
+            vid.style.left = `${baseLeft}px`;
+            vid.style.top = `${baseTop}px`;
+            vid.style.transform = `translate(${dx}px, ${dy}px) scale(${scale})`;
+        }
+
+        // 綁定輸入事件
+        document.querySelectorAll('.param-input').forEach(input => {
+            input.addEventListener('input', (e) => updatePreview(e.target.dataset.ratio));
+        });
+
+        // 處理影片上傳預覽
+        document.getElementById('inputVideos').addEventListener('change', function(e) {
+            if(e.target.files.length > 0) {
+                if(currentVideoURL) URL.revokeObjectURL(currentVideoURL);
+                currentVideoURL = URL.createObjectURL(e.target.files[0]);
+                ratios.forEach(r => {
+                    const vid = document.getElementById(`vid${r}`);
+                    vid.src = currentVideoURL;
+                    updatePreview(r);
+                });
+            }
+        });
+
+        // 處理 Frame 圖片預覽
+        document.querySelectorAll('.frame-upload').forEach(input => {
+            input.addEventListener('change', function(e) {
+                const ratio = this.dataset.ratio;
+                if(e.target.files.length > 0) {
+                    document.getElementById(`frm${ratio}`).src = URL.createObjectURL(e.target.files[0]);
+                }
+            });
+        });
+
+        // === FFmpeg 核心邏輯 (修復 GitHub Pages Worker 錯誤) ===
+        const { FFmpeg } = FFmpegWASM;
+        const { fetchFile, toBlobURL } = FFmpegUtil;
+        let ffmpeg = null;
         const logEl = document.getElementById('log');
+        
         const log = (msg) => {
             console.log(msg);
             logEl.innerHTML += `<div>${msg}</div>`;
@@ -119,17 +203,22 @@
 
         async function initFFmpeg() {
             if (ffmpeg) return;
-            log("正在載入 FFmpeg 核心，這可能需要一點時間...");
+            log("正在載入 FFmpeg 核心並繞過跨網域限制，這需要一點時間...");
             ffmpeg = new FFmpeg();
             ffmpeg.on('log', ({ message }) => log(`[FFmpeg] ${message}`));
+            
+            const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
+            const ffmpegURL = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.7/dist/umd';
+            
+            // 使用 toBlobURL 將檔案抓下來轉為本地 Blob，徹底解決 GitHub Pages 的 CORS Worker 問題
             await ffmpeg.load({
-                coreURL: "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js",
-                wasmURL: "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm",
+                coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+                wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+                workerURL: await toBlobURL(`${ffmpegURL}/814.ffmpeg.js`, 'text/javascript')
             });
             log("FFmpeg 載入完成！");
         }
 
-        // 取得影片實際長度 (簡易輔助函數)
         function getVideoDuration(file) {
             return new Promise((resolve) => {
                 const video = document.createElement('video');
@@ -152,107 +241,93 @@
                 await initFFmpeg();
                 const zip = new JSZip();
 
-                // 讀取設定值
                 const targetDur = parseFloat(document.getElementById('targetDuration').value);
                 const minEndcut = parseFloat(document.getElementById('minEndcutDuration').value);
 
-                // 將音檔與資源寫入 FFmpeg 虛擬檔案系統
                 const audioFile = document.getElementById('inputAudio').files[0];
                 if (audioFile) await ffmpeg.writeFile('audio.mp3', await fetchFile(audioFile));
 
-                const ratios = ['1x1', '16x9', '9x16'];
-                const resolutions = { '1x1': '1080x1080', '16x9': '1920x1080', '9x16': '1080x1920' };
-
-                // 寫入各比例的 Frame 和 Endcut
                 for (let ratio of ratios) {
                     const frameFile = document.getElementById(`frame${ratio}`).files[0];
                     const endcutFile = document.getElementById(`endcut${ratio}`).files[0];
                     if (frameFile) await ffmpeg.writeFile(`frame_${ratio}.png`, await fetchFile(frameFile));
-                    if (endcutFile) await ffmpeg.writeFile(`endcut_${ratio}.png`, await fetchFile(endcutFile)); // 這裡假設 endcut 是圖片，若為影片需另外處理邏輯
+                    if (endcutFile) await ffmpeg.writeFile(`endcut_${ratio}.png`, await fetchFile(endcutFile));
                 }
 
-                // 開始遍歷每支影片
                 for (let i = 0; i < videos.length; i++) {
                     const videoFile = videos[i];
                     const originalName = videoFile.name.split('.').slice(0, -1).join('.');
                     const vDuration = await getVideoDuration(videoFile);
                     
-                    // 核心邏輯：計算時間
-                    // 若 影片長度 < 目標長度(15)，endcut 需補足 (15 - 影片長度)
-                    // 但 endcut 必須 >= 最短秒數(1)
                     let endcutDuration = Math.max(minEndcut, targetDur - vDuration);
-                    let finalDuration = vDuration + endcutDuration;
-                    
-                    log(`處理影片 ${originalName} (原始長度: ${vDuration.toFixed(2)}s, Endcut: ${endcutDuration.toFixed(2)}s, 總長: ${finalDuration.toFixed(2)}s)`);
+                    log(`▶ 開始處理: ${originalName} (原長: ${vDuration.toFixed(2)}s, Endcut: ${endcutDuration.toFixed(2)}s)`);
 
                     await ffmpeg.writeFile('input.mp4', await fetchFile(videoFile));
 
                     for (let ratio of ratios) {
                         log(`正在生成 ${originalName}_${ratio}.mp4 ...`);
                         
-                        // 取得使用者設定的縮放與位置
                         const scale = document.getElementById(`scale${ratio}`).value;
                         const dx = document.getElementById(`x${ratio}`).value;
                         const dy = document.getElementById(`y${ratio}`).value;
-                        const res = resolutions[ratio].split('x');
-                        const w = res[0], h = res[1];
+                        const w = resolutions[ratio].w;
+                        const h = resolutions[ratio].h;
 
-                        // FFmpeg FilterGraph 邏輯 (極度簡化概念版)
-                        // 1. 調整原始影片大小並置中或根據參數偏移
-                        // 2. 疊加 Frame
-                        // 3. 準備 Endcut 圖片並設定長度
-                        // 4. 合併影片與 Endcut，並在 Endcut 階段加入音軌
-                        
-                        // 注意：由於 FFmpeg 指令非常長且依賴具體檔案格式，以下為指令架構示範。
-                        // 實務上會使用 complex_filter 串接。
+                        // FFmpeg 指令合成邏輯
                         let filterGraph = `
                             [0:v]scale=iw*${scale}:ih*${scale}[v_scaled];
                             color=c=black:s=${w}x${h}:d=${vDuration}[bg];
                             [bg][v_scaled]overlay=(W-w)/2+${dx}:(H-h)/2+${dy}[v_placed];
                             [v_placed][1:v]overlay=0:0[v_framed];
                             [2:v]loop=loop=-1:size=1,setpts=N/FRAME_RATE/TB,trim=duration=${endcutDuration},scale=${w}:${h}[endcut_v];
-                            [v_framed][endcut_v]concat=n=2:v=1:a=0[outv];
-                            [3:a]adelay=${vDuration*1000}|${vDuration*1000}[delayed_a]
+                            [v_framed][endcut_v]concat=n=2:v=1:a=0[outv]
                         `.replace(/\n/g, '').replace(/\s+/g, '');
+                        
+                        // 若有上傳音檔則加入音軌延遲
+                        let maps = ['-map', '[outv]'];
+                        if (audioFile) {
+                            filterGraph += `;[3:a]adelay=${vDuration*1000}|${vDuration*1000}[delayed_a]`;
+                            maps.push('-map', '[delayed_a]');
+                        }
 
                         const outName = `${originalName}_${ratio}.mp4`;
                         
                         try {
-                            // 執行 FFmpeg 指令 (這是一段高階合併指令，需要確保所有 input 都有給齊)
-                            await ffmpeg.exec([
+                            const ffmpegArgs = [
                                 '-i', 'input.mp4',
                                 '-i', `frame_${ratio}.png`,
-                                '-i', `endcut_${ratio}.png`,
-                                '-i', 'audio.mp3',
+                                '-i', `endcut_${ratio}.png`
+                            ];
+                            if (audioFile) ffmpegArgs.push('-i', 'audio.mp3');
+                            
+                            ffmpegArgs.push(
                                 '-filter_complex', filterGraph,
-                                '-map', '[outv]',
-                                '-map', '[delayed_a]',
+                                ...maps,
                                 '-c:v', 'libx264',
-                                '-pix_fmt', 'yuv420p',
-                                '-c:a', 'aac',
-                                '-shortest',
-                                outName
-                            ]);
+                                '-pix_fmt', 'yuv420p'
+                            );
+                            if (audioFile) ffmpegArgs.push('-c:a', 'aac', '-shortest');
+                            ffmpegArgs.push(outName);
 
-                            // 讀取輸出檔案並加入 ZIP
+                            await ffmpeg.exec(ffmpegArgs);
+
                             const outData = await ffmpeg.readFile(outName);
                             zip.file(outName, outData.buffer);
-                            log(`完成 ${outName}`);
+                            log(`✅ 完成 ${outName}`);
                         } catch (e) {
-                            log(`生成 ${outName} 時發生錯誤。請確認是否有上傳對應的 Frame / Endcut 圖片`);
-                            console.error(e);
+                            log(`❌ 生成 ${outName} 失敗，請檢查是否漏傳對應的 Frame 或 Endcut 圖片。`);
                         }
                     }
                 }
 
-                log("所有影片處理完成，正在打包壓縮檔...");
+                log("🎉 所有影片處理完成，正在打包壓縮檔...");
                 const zipContent = await zip.generateAsync({ type: "blob" });
                 saveAs(zipContent, "Processed_Videos.zip");
-                log("下載完成！");
+                log("⬇️ 下載完成！");
 
             } catch (err) {
                 console.error(err);
-                log(`發生嚴重錯誤: ${err.message}`);
+                log(`🚨 發生錯誤: ${err.message}`);
             } finally {
                 btn.disabled = false;
             }
