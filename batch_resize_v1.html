@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>自動化影片轉檔產生器 (高度填滿修正版)</title>
+    <title>自動化影片轉檔產生器 (GitHub Pages 終極修復版)</title>
+    
+    <script src="https://cdn.jsdelivr.net/gh/gzuidhof/coi-serviceworker@0.1.7/coi-serviceworker.min.js"></script>
+    
     <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.0/dist/ffmpeg.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
@@ -132,16 +135,19 @@
             ratios.forEach(r => {
                 const wrap = document.getElementById(`wrap${r}`);
                 const canvas = document.getElementById(`canvas${r}`);
-                const scale = wrap.clientWidth / resolutions[r].w;
-                canvas.style.transform = `scale(${scale})`;
+                if (wrap && canvas) {
+                    const scale = wrap.clientWidth / resolutions[r].w;
+                    canvas.style.transform = `scale(${scale})`;
+                }
             });
         }
         window.addEventListener('resize', scalePreviewCanvas);
-        scalePreviewCanvas();
+        setTimeout(scalePreviewCanvas, 500); // 確保初次載入正確縮放
 
-        // 核心邏輯：計算高度填滿後的縮放比例與置中位置
+        // 計算高度填滿後的縮放比例與置中位置
         function updatePreview(ratio) {
             const vid = document.getElementById(`vid${ratio}`);
+            if (!vid) return;
             const userScale = parseFloat(document.getElementById(`scale${ratio}`).value) || 1;
             const dx = parseFloat(document.getElementById(`x${ratio}`).value) || 0;
             const dy = parseFloat(document.getElementById(`y${ratio}`).value) || 0;
@@ -149,21 +155,20 @@
             const canvasW = resolutions[ratio].w;
             const canvasH = resolutions[ratio].h;
 
-            // 讓影片高度填滿畫布高度，並算出對應的寬度 (保持 9:16)
+            // 影片高度填滿畫布高度，寬度保持 9:16 比例
             const targetVidH = canvasH;
             const targetVidW = targetVidH * (9 / 16);
 
             // 計算預設置中坐標
             const baseLeft = (canvasW - targetVidW) / 2;
-            const baseTop = 0; // 高度填滿，所以 Top 預設為 0
+            const baseTop = 0; 
             
-            // 套用寬高
             vid.style.width = `${targetVidW}px`;
             vid.style.height = `${targetVidH}px`;
             vid.style.left = `${baseLeft}px`;
             vid.style.top = `${baseTop}px`;
             
-            // 套用使用者自訂的 X/Y 偏移與額外縮放
+            // 套用自訂偏移與縮放
             vid.style.transform = `translate(${dx}px, ${dy}px) scale(${userScale})`;
         }
 
@@ -177,8 +182,10 @@
                 currentVideoURL = URL.createObjectURL(e.target.files[0]);
                 ratios.forEach(r => {
                     const vid = document.getElementById(`vid${r}`);
-                    vid.src = currentVideoURL;
-                    updatePreview(r);
+                    if(vid) {
+                        vid.src = currentVideoURL;
+                        updatePreview(r);
+                    }
                 });
             }
         });
@@ -187,12 +194,13 @@
             input.addEventListener('change', function(e) {
                 const ratio = this.dataset.ratio;
                 if(e.target.files.length > 0) {
-                    document.getElementById(`frm${ratio}`).src = URL.createObjectURL(e.target.files[0]);
+                    const frm = document.getElementById(`frm${ratio}`);
+                    if(frm) frm.src = URL.createObjectURL(e.target.files[0]);
                 }
             });
         });
 
-        // === FFmpeg v0.11.0 穩定版核心邏輯 ===
+        // === FFmpeg v0.11.0 核心邏輯 ===
         const { createFFmpeg, fetchFile } = FFmpeg;
         let ffmpeg = null;
         const logEl = document.getElementById('log');
@@ -205,8 +213,7 @@
 
         async function initFFmpeg() {
             if (ffmpeg) return;
-            log("正在載入 FFmpeg 穩定版核心...");
-            // v0.11.0 不需要處理外部單獨的 worker.js，直接載入核心，解決 GitHub Pages 阻擋問題
+            log("正在載入 FFmpeg 核心...");
             ffmpeg = createFFmpeg({ 
                 log: true,
                 corePath: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js'
@@ -270,9 +277,7 @@
                         const w = resolutions[ratio].w;
                         const h = resolutions[ratio].h;
 
-                        // 轉檔邏輯對應：
-                        // 1. 強制將輸入影片的高度縮放為輸出畫布高度 (${h})，寬度按 9/16 計算並套用使用者微調 scale
-                        // 2. 置中疊加計算：(W-w)/2
+                        // 轉檔高度自動填滿畫布高度 (${h})
                         let filterGraph = `
                             [0:v]scale=-1:${h}*${userScale}[v_scaled];
                             color=c=black:s=${w}x${h}:d=${vDuration}[bg];
