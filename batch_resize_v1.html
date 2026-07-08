@@ -3,25 +3,134 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>自動化影片轉檔產生器 (GitHub Pages 終極修復版)</title>
+    <title>影片批次處理工具 | 專業版</title>
     
-    <script src="https://cdn.jsdelivr.net/gh/gzuidhof/coi-serviceworker@0.1.7/coi-serviceworker.min.js"></script>
-    
-    <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.0/dist/ffmpeg.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; max-width: 1200px; margin: auto; background-color: #f0f2f5; }
-        .section { background: white; padding: 20px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
-        h2 { border-bottom: 2px solid #333; padding-bottom: 8px; margin-top: 0; font-size: 1.2rem; }
-        label { display: block; margin: 10px 0 5px; font-weight: bold; }
-        input[type="file"], input[type="number"] { width: 100%; padding: 8px; margin-bottom: 5px; box-sizing: border-box; }
-        .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
-        .col { background: #fafafa; padding: 15px; border-radius: 8px; border: 1px solid #ddd; }
-        .help-text { font-size: 0.85rem; color: #666; margin-bottom: 10px; display: block; line-height: 1.5; }
+        /* 基礎全域設定 */
+        :root {
+            --primary: #4361ee;
+            --primary-hover: #3a53d0;
+            --bg-color: #f4f7f9;
+            --text-main: #2b2d42;
+            --text-muted: #8d99ae;
+            --card-bg: #ffffff;
+            --border-radius: 12px;
+            --transition: all 0.3s ease;
+        }
+
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; 
+            padding: 30px 20px; 
+            max-width: 1200px; 
+            margin: auto; 
+            background-color: var(--bg-color); 
+            color: var(--text-main);
+            line-height: 1.6;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 2.2rem;
+            margin-bottom: 30px;
+            color: var(--text-main);
+            font-weight: 800;
+            letter-spacing: -0.5px;
+        }
+
+        /* 卡片設計 */
+        .section { 
+            background: var(--card-bg); 
+            padding: 25px 30px; 
+            margin-bottom: 25px; 
+            border-radius: var(--border-radius); 
+            box-shadow: 0 8px 30px rgba(0,0,0,0.04); 
+            border: 1px solid rgba(0,0,0,0.02);
+        }
         
+        h2 { 
+            border-bottom: 2px solid #edf2f4; 
+            padding-bottom: 12px; 
+            margin-top: 0; 
+            font-size: 1.3rem; 
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        label { 
+            display: block; 
+            margin: 12px 0 6px; 
+            font-weight: 600; 
+            font-size: 0.95rem;
+            color: #4a4e69;
+        }
+
+        /* 輸入框與按鈕美化 */
+        input[type="file"], input[type="number"] { 
+            width: 100%; 
+            padding: 10px 12px; 
+            margin-bottom: 10px; 
+            box-sizing: border-box; 
+            border: 1px solid #ced4da;
+            border-radius: 8px;
+            background-color: #f8f9fa;
+            transition: var(--transition);
+            font-family: inherit;
+        }
+        
+        input[type="file"]:hover, input[type="number"]:focus {
+            border-color: var(--primary);
+            background-color: #fff;
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.15);
+        }
+
+        .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+        .col { 
+            background: #fdfdfd; 
+            padding: 20px; 
+            border-radius: 10px; 
+            border: 1px solid #eaebed; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.02);
+        }
+        
+        .col h3 {
+            margin-top: 0;
+            text-align: center;
+            color: #2b2d42;
+            font-size: 1.1rem;
+            background: #edf2f4;
+            padding: 8px;
+            border-radius: 6px;
+        }
+
+        .help-text { 
+            font-size: 0.9rem; 
+            color: var(--text-muted); 
+            background: #eef2ff;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px; 
+            border-left: 4px solid var(--primary);
+        }
+
         /* 預覽視窗 */
-        .preview-wrapper { width: 100%; background: #333; border-radius: 4px; overflow: hidden; position: relative; margin-top: 15px; border: 1px dashed #999; }
+        .preview-wrapper { 
+            width: 100%; 
+            background: #1a1a1a; 
+            border-radius: 8px; 
+            overflow: hidden; 
+            position: relative; 
+            margin-top: 20px; 
+            border: 2px dashed #4a4e69; 
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+        }
         .preview-wrapper.r1x1 { aspect-ratio: 1/1; }
         .preview-wrapper.r16x9 { aspect-ratio: 16/9; }
         .preview-wrapper.r9x16 { aspect-ratio: 9/16; }
@@ -29,18 +138,83 @@
         .preview-vid { position: absolute; }
         .preview-frm { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
 
-        button { background: #007BFF; color: white; border: none; padding: 15px 20px; font-size: 16px; border-radius: 5px; cursor: pointer; width: 100%; font-weight: bold;}
-        button:hover { background: #0056b3; }
-        button:disabled { background: #ccc; cursor: not-allowed; }
-        #log { background: #1e1e1e; color: #4af626; padding: 15px; border-radius: 5px; height: 150px; overflow-y: auto; font-family: monospace; margin-top: 20px;}
+        /* 主要按鈕 */
+        button { 
+            background: linear-gradient(135deg, var(--primary), var(--primary-hover)); 
+            color: white; 
+            border: none; 
+            padding: 18px 20px; 
+            font-size: 1.1rem; 
+            border-radius: 10px; 
+            cursor: pointer; 
+            width: 100%; 
+            font-weight: bold;
+            letter-spacing: 1px;
+            transition: var(--transition);
+            box-shadow: 0 4px 15px rgba(67, 97, 238, 0.3);
+        }
+        button:hover { 
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(67, 97, 238, 0.4);
+        }
+        button:disabled { 
+            background: #b0b3c6; 
+            cursor: not-allowed; 
+            transform: none;
+            box-shadow: none;
+        }
+
+        /* Console 終端機日誌 */
+        #log-container {
+            margin-top: 25px;
+            border-radius: var(--border-radius);
+            overflow: hidden;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.1);
+        }
+        .log-header {
+            background: #2b2d42;
+            color: #fff;
+            padding: 10px 15px;
+            font-size: 0.9rem;
+            font-family: monospace;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .log-dot {
+            width: 10px; height: 10px; border-radius: 50%; display: inline-block;
+        }
+        .dot-red { background: #ff5f56; }
+        .dot-yellow { background: #ffbd2e; }
+        .dot-green { background: #27c93f; }
+        
+        #log { 
+            background: #1e1e1e; 
+            color: #4af626; 
+            padding: 15px; 
+            height: 200px; 
+            overflow-y: auto; 
+            font-family: 'Courier New', Courier, monospace; 
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+        #log div { border-bottom: 1px solid rgba(255,255,255,0.05); padding: 4px 0; }
+        
+        /* 捲軸美化 */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+        #log::-webkit-scrollbar-track { background: #1a1a1a; }
+        #log::-webkit-scrollbar-thumb { background: #444; }
     </style>
 </head>
 <body>
 
-    <h1>影片批次處理工具 (高度自動填滿版)</h1>
+    <h1>✨ 影片批次處理工具 <span style="font-size: 1rem; color: #8d99ae; font-weight: normal;">v2.0 專業版</span></h1>
 
     <div class="section">
-        <h2>1. 影片與音檔上傳</h2>
+        <h2>🎬 1. 影片與音檔上傳</h2>
         <label>上傳 9:16 影片 (可多選，預覽會取第一支):</label>
         <input type="file" id="inputVideos" accept="video/*" multiple>
         
@@ -49,21 +223,23 @@
     </div>
 
     <div class="section">
-        <h2>2. Frame 邊框上傳 & 位置調節預覽</h2>
+        <h2>🖼️ 2. 邊框上傳 & 位置預覽</h2>
         <div class="help-text">
             💡 <strong>參數調節說明：</strong><br>
-            • <strong>預設狀態：</strong> 影片高度會<strong>自動等於</strong>輸出畫布的高度（1:1為1080、16:9為1080、9:16為1920），寬度按 9:16 比例縮放並置中。<br>
-            • <strong>影片縮放 (Scale)：</strong> 以自動填滿後的大小為基準。<code>1.0</code> 代表剛好填滿高度；<code>0.5</code> 代表縮小一半；<code>1.2</code> 代表放大 1.2 倍。<br>
-            • <strong>X 偏移量 / Y 偏移量：</strong> 預設為 <code>0</code> (正中間)。輸入正數往右/下移動，負數往左/上移動。
+            • <strong>預設狀態：</strong> 影片高度會<strong>自動等於</strong>輸出畫布的高度（寬度按比例縮放並置中）。<br>
+            • <strong>影片縮放 (Scale)：</strong> <code>1.0</code> 代表剛好填滿高度；<code>0.5</code> 代表縮小一半；<code>1.2</code> 代表放大。<br>
+            • <strong>X / Y 偏移：</strong> 預設為 <code>0</code> (正中間)。正數向右/下，負數向左/上。
         </div>
         <div class="grid">
             <div class="col">
-                <h3>1:1 (1080x1080)</h3>
+                <h3>1:1 格式</h3>
                 <label>Frame 圖檔:</label>
                 <input type="file" id="frame1x1" accept="image/*" class="frame-upload" data-ratio="1x1">
                 <label>縮放 (Scale):</label> <input type="number" id="scale1x1" value="1.0" step="0.1" class="param-input" data-ratio="1x1">
-                <label>X 偏移:</label> <input type="number" id="x1x1" value="0" class="param-input" data-ratio="1x1">
-                <label>Y 偏移:</label> <input type="number" id="y1x1" value="0" class="param-input" data-ratio="1x1">
+                <div style="display: flex; gap: 10px;">
+                    <div style="flex:1"><label>X 偏移:</label> <input type="number" id="x1x1" value="0" class="param-input" data-ratio="1x1"></div>
+                    <div style="flex:1"><label>Y 偏移:</label> <input type="number" id="y1x1" value="0" class="param-input" data-ratio="1x1"></div>
+                </div>
                 
                 <div class="preview-wrapper r1x1" id="wrap1x1">
                     <div class="preview-canvas" id="canvas1x1" style="width: 1080px; height: 1080px;">
@@ -74,12 +250,14 @@
             </div>
 
             <div class="col">
-                <h3>16:9 (1920x1080)</h3>
+                <h3>16:9 格式</h3>
                 <label>Frame 圖檔:</label>
                 <input type="file" id="frame16x9" accept="image/*" class="frame-upload" data-ratio="16x9">
                 <label>縮放 (Scale):</label> <input type="number" id="scale16x9" value="1.0" step="0.1" class="param-input" data-ratio="16x9">
-                <label>X 偏移:</label> <input type="number" id="x16x9" value="0" class="param-input" data-ratio="16x9">
-                <label>Y 偏移:</label> <input type="number" id="y16x9" value="0" class="param-input" data-ratio="16x9">
+                <div style="display: flex; gap: 10px;">
+                    <div style="flex:1"><label>X 偏移:</label> <input type="number" id="x16x9" value="0" class="param-input" data-ratio="16x9"></div>
+                    <div style="flex:1"><label>Y 偏移:</label> <input type="number" id="y16x9" value="0" class="param-input" data-ratio="16x9"></div>
+                </div>
                 
                 <div class="preview-wrapper r16x9" id="wrap16x9">
                     <div class="preview-canvas" id="canvas16x9" style="width: 1920px; height: 1080px;">
@@ -90,12 +268,14 @@
             </div>
 
             <div class="col">
-                <h3>9:16 (1080x1920)</h3>
+                <h3>9:16 格式</h3>
                 <label>Frame 圖檔:</label>
                 <input type="file" id="frame9x16" accept="image/*" class="frame-upload" data-ratio="9x16">
                 <label>縮放 (Scale):</label> <input type="number" id="scale9x16" value="1.0" step="0.1" class="param-input" data-ratio="9x16">
-                <label>X 偏移:</label> <input type="number" id="x9x16" value="0" class="param-input" data-ratio="9x16">
-                <label>Y 偏移:</label> <input type="number" id="y9x16" value="0" class="param-input" data-ratio="9x16">
+                <div style="display: flex; gap: 10px;">
+                    <div style="flex:1"><label>X 偏移:</label> <input type="number" id="x9x16" value="0" class="param-input" data-ratio="9x16"></div>
+                    <div style="flex:1"><label>Y 偏移:</label> <input type="number" id="y9x16" value="0" class="param-input" data-ratio="9x16"></div>
+                </div>
                 
                 <div class="preview-wrapper r9x16" id="wrap9x16">
                     <div class="preview-canvas" id="canvas9x16" style="width: 1080px; height: 1920px;">
@@ -108,22 +288,30 @@
     </div>
 
     <div class="section">
-        <h2>3. Endcut 結尾圖與時間設定</h2>
+        <h2>⏱️ 3. Endcut 結尾圖與時間設定</h2>
         <div class="grid">
             <div><label>1:1 Endcut (圖片):</label><input type="file" id="endcut1x1" accept="image/*"></div>
             <div><label>16:9 Endcut (圖片):</label><input type="file" id="endcut16x9" accept="image/*"></div>
             <div><label>9:16 Endcut (圖片):</label><input type="file" id="endcut9x16" accept="image/*"></div>
         </div>
-        <hr style="border: 0; border-top: 1px solid #eee; margin: 15px 0;">
-        <div style="display: flex; gap: 20px;">
+        <hr style="border: 0; border-top: 1px solid #eaebed; margin: 20px 0;">
+        <div style="display: flex; gap: 30px;">
             <div style="flex: 1;"><label>預設總影片秒數 (秒):</label><input type="number" id="targetDuration" value="15" min="1"></div>
             <div style="flex: 1;"><label>Endcut 最短秒數 (秒):</label><input type="number" id="minEndcutDuration" value="1" min="1"></div>
         </div>
     </div>
 
-    <button id="processBtn">開始轉檔並下載壓縮檔</button>
+    <button id="processBtn">🚀 開始轉檔並下載壓縮檔</button>
 
-    <div id="log">系統準備就緒...</div>
+    <div id="log-container">
+        <div class="log-header">
+            <span class="log-dot dot-red"></span>
+            <span class="log-dot dot-yellow"></span>
+            <span class="log-dot dot-green"></span>
+            <span style="margin-left: 10px;">系統狀態控制台 (Terminal)</span>
+        </div>
+        <div id="log">等待操作中...</div>
+    </div>
 
     <script>
         const ratios = ['1x1', '16x9', '9x16'];
@@ -142,7 +330,7 @@
             });
         }
         window.addEventListener('resize', scalePreviewCanvas);
-        setTimeout(scalePreviewCanvas, 500); // 確保初次載入正確縮放
+        setTimeout(scalePreviewCanvas, 500);
 
         // 計算高度填滿後的縮放比例與置中位置
         function updatePreview(ratio) {
@@ -155,11 +343,9 @@
             const canvasW = resolutions[ratio].w;
             const canvasH = resolutions[ratio].h;
 
-            // 影片高度填滿畫布高度，寬度保持 9:16 比例
             const targetVidH = canvasH;
             const targetVidW = targetVidH * (9 / 16);
 
-            // 計算預設置中坐標
             const baseLeft = (canvasW - targetVidW) / 2;
             const baseTop = 0; 
             
@@ -168,7 +354,6 @@
             vid.style.left = `${baseLeft}px`;
             vid.style.top = `${baseTop}px`;
             
-            // 套用自訂偏移與縮放
             vid.style.transform = `translate(${dx}px, ${dy}px) scale(${userScale})`;
         }
 
@@ -200,27 +385,32 @@
             });
         });
 
-        // === FFmpeg v0.11.0 核心邏輯 ===
-        const { createFFmpeg, fetchFile } = FFmpeg;
+        // === FFmpeg v0.12.0 核心邏輯 (無須 SharedArrayBuffer) ===
+        const { FFmpeg } = window.FFmpeg;
+        const { fetchFile } = window.FFmpegUtil;
         let ffmpeg = null;
         const logEl = document.getElementById('log');
         
         const log = (msg) => {
             console.log(msg);
-            logEl.innerHTML += `<div>${msg}</div>`;
+            const time = new Date().toLocaleTimeString();
+            logEl.innerHTML += `<div><span style="color:#888">[${time}]</span> ${msg}</div>`;
             logEl.scrollTop = logEl.scrollHeight;
         };
 
         async function initFFmpeg() {
             if (ffmpeg) return;
-            log("正在載入 FFmpeg 核心...");
-            ffmpeg = createFFmpeg({ 
-                log: true,
-                corePath: 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js'
+            log("正在初始化 FFmpeg 核心引擎 (v0.12)...");
+            ffmpeg = new FFmpeg();
+            
+            ffmpeg.on('log', ({ message }) => log(`⚙️ ${message}`));
+            
+            const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd';
+            await ffmpeg.load({
+                coreURL: `${baseURL}/ffmpeg-core.js`,
+                wasmURL: `${baseURL}/ffmpeg-core.wasm`,
             });
-            ffmpeg.setLogger(({ message }) => log(`[FFmpeg] ${message}`));
-            await ffmpeg.load();
-            log("FFmpeg 載入完成！");
+            log("✅ FFmpeg 引擎載入完成！準備執行轉檔任務。");
         }
 
         function getVideoDuration(file) {
@@ -241,6 +431,9 @@
             if (videos.length === 0) return alert('請至少上傳一支影片！');
 
             btn.disabled = true;
+            btn.innerHTML = "⏳ 處理中，請耐心等候...";
+            logEl.innerHTML = "<div>系統任務開始...</div>"; // 清空之前的 Log
+            
             try {
                 await initFFmpeg();
                 const zip = new JSZip();
@@ -249,13 +442,15 @@
                 const minEndcut = parseFloat(document.getElementById('minEndcutDuration').value);
 
                 const audioFile = document.getElementById('inputAudio').files[0];
-                if (audioFile) ffmpeg.FS('writeFile', 'audio.mp3', await fetchFile(audioFile));
+                if (audioFile) {
+                    await ffmpeg.writeFile('audio.mp3', await fetchFile(audioFile));
+                }
 
                 for (let ratio of ratios) {
                     const frameFile = document.getElementById(`frame${ratio}`).files[0];
                     const endcutFile = document.getElementById(`endcut${ratio}`).files[0];
-                    if (frameFile) ffmpeg.FS('writeFile', `frame_${ratio}.png`, await fetchFile(frameFile));
-                    if (endcutFile) ffmpeg.FS('writeFile', `endcut_${ratio}.png`, await fetchFile(endcutFile));
+                    if (frameFile) await ffmpeg.writeFile(`frame_${ratio}.png`, await fetchFile(frameFile));
+                    if (endcutFile) await ffmpeg.writeFile(`endcut_${ratio}.png`, await fetchFile(endcutFile));
                 }
 
                 for (let i = 0; i < videos.length; i++) {
@@ -264,12 +459,13 @@
                     const vDuration = await getVideoDuration(videoFile);
                     
                     let endcutDuration = Math.max(minEndcut, targetDur - vDuration);
-                    log(`▶ 開始處理: ${originalName} (原長: ${vDuration.toFixed(2)}s, Endcut: ${endcutDuration.toFixed(2)}s)`);
+                    log(`▶ 開始處理第 ${i+1}/${videos.length} 支影片: [${originalName}]`);
+                    log(`📊 原片長度: ${vDuration.toFixed(2)}s | 預計 Endcut 長度: ${endcutDuration.toFixed(2)}s`);
 
-                    ffmpeg.FS('writeFile', 'input.mp4', await fetchFile(videoFile));
+                    await ffmpeg.writeFile('input.mp4', await fetchFile(videoFile));
 
                     for (let ratio of ratios) {
-                        log(`正在生成 ${originalName}_${ratio}.mp4 ...`);
+                        log(`正在運算 [${ratio}] 格式...`);
                         
                         const userScale = document.getElementById(`scale${ratio}`).value;
                         const dx = document.getElementById(`x${ratio}`).value;
@@ -277,7 +473,6 @@
                         const w = resolutions[ratio].w;
                         const h = resolutions[ratio].h;
 
-                        // 轉檔高度自動填滿畫布高度 (${h})
                         let filterGraph = `
                             [0:v]scale=-1:${h}*${userScale}[v_scaled];
                             color=c=black:s=${w}x${h}:d=${vDuration}[bg];
@@ -307,32 +502,36 @@
                                 '-filter_complex', filterGraph,
                                 ...maps,
                                 '-c:v', 'libx264',
-                                '-pix_fmt', 'yuv420p'
+                                '-pix_fmt', 'yuv420p',
+                                '-preset', 'fast' // 增加轉檔速度
                             );
                             if (audioFile) ffmpegArgs.push('-c:a', 'aac', '-shortest');
                             ffmpegArgs.push(outName);
 
-                            await ffmpeg.run(...ffmpegArgs);
+                            // 執行指令
+                            await ffmpeg.exec(ffmpegArgs);
 
-                            const outData = ffmpeg.FS('readFile', outName);
+                            // 讀取產出的檔案
+                            const outData = await ffmpeg.readFile(outName);
                             zip.file(outName, outData.buffer);
-                            log(`✅ 完成 ${outName}`);
+                            log(`✅ 成功生成: ${outName}`);
                         } catch (e) {
-                            log(`❌ 生成 ${outName} 失敗，請確認是否漏傳 Frame 或 Endcut 圖檔。`);
+                            log(`❌ 失敗: ${outName}。請確認 Frame/Endcut 圖檔是否皆已上傳！`);
                         }
                     }
                 }
 
-                log("🎉 所有影片處理完成，正在打包壓縮檔...");
+                log("🎉 所有影片皆處理完成！正在壓縮打包中...");
                 const zipContent = await zip.generateAsync({ type: "blob" });
                 saveAs(zipContent, "Processed_Videos.zip");
-                log("⬇️ 下載完成！");
+                log("⬇️ ZIP 壓縮檔已觸發下載！");
 
             } catch (err) {
                 console.error(err);
-                log(`🚨 發生錯誤: ${err.message}`);
+                log(`🚨 發生嚴重錯誤: ${err.message}`);
             } finally {
                 btn.disabled = false;
+                btn.innerHTML = "🚀 開始轉檔並下載壓縮檔";
             }
         });
     </script>
