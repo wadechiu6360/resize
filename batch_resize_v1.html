@@ -209,7 +209,7 @@
 </head>
 <body>
 
-    <h1>✨ 影片批次處理工具 <span style="font-size: 1rem; color: #8d99ae; font-weight: normal;">v4.0 終極穩定版</span></h1>
+    <h1>✨ 影片批次處理工具 <span style="font-size: 1rem; color: #8d99ae; font-weight: normal;">v5.0 光速載入版</span></h1>
 
     <div class="section">
         <h2>🎬 1. 影片與音檔上傳</h2>
@@ -312,8 +312,8 @@
     </div>
 
     <script type="module">
-        import { FFmpeg } from 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js';
-        import { fetchFile, toBlobURL } from 'https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js';
+        import { FFmpeg } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js';
+        import { fetchFile, toBlobURL } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js';
 
         const ratios = ['1x1', '16x9', '9x16'];
         const resolutions = { '1x1': {w: 1080, h: 1080}, '16x9': {w: 1920, h: 1080}, '9x16': {w: 1080, h: 1920} };
@@ -384,12 +384,17 @@
         let ffmpeg = null;
         const logEl = document.getElementById('log');
         
-        const log = (msg) => {
+        const log = (msg, isError = false) => {
             console.log(msg);
             const time = new Date().toLocaleTimeString();
-            logEl.innerHTML += `<div><span style="color:#888">[${time}]</span> ${msg}</div>`;
+            const color = isError ? '#ff5f56' : '#4af626';
+            logEl.innerHTML += `<div><span style="color:#888">[${time}]</span> <span style="color:${color}">${msg}</span></div>`;
             logEl.scrollTop = logEl.scrollHeight;
         };
+
+        // 終極全域錯誤捕捉器
+        window.addEventListener('error', (e) => log(`🚨 網頁層級錯誤: ${e.message}`, true));
+        window.addEventListener('unhandledrejection', (e) => log(`🚨 網路請求錯誤: ${e.reason}`, true));
 
         async function initFFmpeg() {
             if (ffmpeg) return;
@@ -398,17 +403,31 @@
             
             ffmpeg.on('log', ({ message }) => log(`⚙️ ${message}`));
             
-            const coreBaseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
-            const ffmpegBaseURL = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm';
+            // 換成 jsDelivr CDN
+            const coreBaseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd';
+            const ffmpegBaseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm';
             
-            log("⏳ 正在下載並掛載模組 (避開 GitHub 限制，首次載入請稍候)...");
-            
-            await ffmpeg.load({
-                coreURL: await toBlobURL(`${coreBaseURL}/ffmpeg-core.js`, 'text/javascript'),
-                wasmURL: await toBlobURL(`${coreBaseURL}/ffmpeg-core.wasm`, 'application/wasm'),
-                classWorkerURL: await toBlobURL(`${ffmpegBaseURL}/worker.js`, 'text/javascript')
-            });
-            log("✅ FFmpeg 引擎載入完成！準備執行轉檔任務。");
+            try {
+                log("⬇️ [1/3] 正在下載核心驅動 (ffmpeg-core.js)...");
+                const coreURL = await toBlobURL(`${coreBaseURL}/ffmpeg-core.js`, 'text/javascript');
+                
+                log("⬇️ [2/3] 正在下載運算模組 (31MB檔案，需時幾秒至十幾秒，請耐心等候)...");
+                const wasmURL = await toBlobURL(`${coreBaseURL}/ffmpeg-core.wasm`, 'application/wasm');
+                
+                log("⬇️ [3/3] 正在下載背景執行緒 (worker.js)...");
+                const workerURL = await toBlobURL(`${ffmpegBaseURL}/worker.js`, 'text/javascript');
+                
+                log("🔄 檔案下載完成！正在掛載至瀏覽器...");
+                await ffmpeg.load({
+                    coreURL: coreURL,
+                    wasmURL: wasmURL,
+                    classWorkerURL: workerURL
+                });
+                log("✅ FFmpeg 引擎載入完成！開始執行轉檔。");
+            } catch (err) {
+                log(`🚨 核心載入失敗: ${err.message}`, true);
+                throw err;
+            }
         }
 
         function getVideoDuration(file) {
@@ -523,7 +542,7 @@
                             zip.file(outName, outData); 
                             log(`✅ 成功生成: ${outName}`);
                         } catch (e) {
-                            log(`❌ 失敗: ${outName} 處理過程中發生錯誤。`);
+                            log(`❌ 失敗: ${outName} 處理過程中發生錯誤。`, true);
                         }
                     }
                 }
@@ -534,14 +553,13 @@
                     window.saveAs(zipContent, "Processed_Videos.zip");
                     log("⬇️ ZIP 壓縮檔已觸發下載！");
                 } else {
-                    log("⚠️ 沒有產出任何影片，因為你沒有上傳任何比例的 Frame 和 Endcut 組合！");
+                    log("⚠️ 沒有產出任何影片，因為你沒有上傳任何比例的 Frame 和 Endcut 組合！", true);
                     alert("請至少完整上傳一種比例（例如 16:9）的 Frame 與 Endcut 圖檔！");
                 }
 
             } catch (err) {
                 console.error(err);
-                log(`🚨 發生嚴重錯誤: ${err.message}`);
-                alert(`程式執行錯誤: ${err.message}`);
+                log(`🚨 發生嚴重錯誤: ${err.message}`, true);
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = "🚀 開始轉檔並下載壓縮檔";
