@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>YouTube 批次上傳工具</title>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <style>
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Noto Sans TC", sans-serif;
+      background: #f6f1e8;
+      color: #1f1a17;
+    }
+    .wrap {
+      max-width: 1100px;
+      margin: 24px auto;
+      padding: 0 16px;
+    }
+    .card {
+      background: #fffdf8;
+      border: 1px solid #e6dccd;
+      border-radius: 18px;
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.06);
+    }
+    h1, h2 { margin: 0 0 12px; }
+    p { color: #675f56; line-height: 1.6; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    label {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+    input[type="text"], textarea, select {
+      width: 100%;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid #d8cbbb;
+      box-sizing: border-box;
+      font: inherit;
+      background: white;
+    }
+    textarea { min-height: 90px; resize: vertical; }
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 18px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      margin-right: 8px;
+      margin-bottom: 8px;
+    }
+    .primary { background: #cc4b2d; color: white; }
+    .secondary { background: #eee5d7; color: #332a24; }
+    .ok { color: #216c3d; }
+    .warn { color: #8a5600; }
+    .error { color: #b03030; }
+    .status {
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: #f5efe5;
+      margin-top: 10px;
+      font-size: 14px;
+    }
+    .row {
+      border: 1px solid #eadfce;
+      border-radius: 14px;
+      padding: 14px;
+      margin-top: 12px;
+      background: #fff;
+    }
+    .row-grid {
+      display: grid;
+      grid-template-columns: 1.2fr .8fr;
+      gap: 12px;
+    }
+    .meta {
+      font-size: 12px;
+      color: #6c635b;
+      margin-top: 8px;
+    }
+    progress {
+      width: 100%;
+      height: 12px;
+      margin-top: 8px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px 8px;
+      border-bottom: 1px solid #ece2d3;
+      vertical-align: top;
+    }
+    a { color: #cc4b2d; word-break: break-all; }
+    .small { font-size: 13px; color: #6c635b; }
+    @media (max-width: 780px) {
+      .grid, .row-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>YouTube 批次上傳工具</h1>
+      <p>選多支影片、設定瀏覽權限、批次上傳，最後自動整理出影片名稱與連結。</p>
+      <p class="small">注意：如果你的 Google API 專案未通過 YouTube 稽核，影片可能會被強制成私人。</p>
+    </div>
+
+    <div class="card">
+      <h2>1. 授權設定</h2>
+      <div class="grid">
+        <label>
+          Google OAuth Client ID
+          <input id="clientId" type="text" placeholder="貼上你的 Web OAuth Client ID">
+        </label>
+        <label>
+          預設瀏覽權限
+          <select id="defaultPrivacy">
+            <option value="public">公開</option>
+            <option value="unlisted" selected>不公開</option>
+            <option value="private">私人</option>
+          </select>
+        </label>
+      </div>
+      <label>
+        預設說明
+        <textarea id="defaultDescription" placeholder="可留空"></textarea>
+      </label>
+      <button id="authBtn" class="primary">連接 Google / YouTube</button>
+      <button id="revokeBtn" class="secondary">取消授權</button>
+      <div id="authStatus" class="status">尚未授權</div>
+    </div>
+
+    <div class="card">
+      <h2>2. 選影片</h2>
+      <input id="videoInput" type="file" accept="video/*" multiple>
+      <div style="margin-top:12px;">
+        <button id="applyDefaultsBtn" class="secondary">套用預設到全部</button>
+        <button id="clearBtn" class="secondary">清空片單</button>
+      </div>
+      <div id="queueStatus" class="status">尚未加入影片</div>
+      <div id="queue"></div>
+    </div>
+
+    <div class="card">
+      <h2>3. 上傳與整理</h2>
+      <button id="uploadBtn" class="primary">開始批次上傳</button>
+      <button id="copyBtn" class="secondary">複製 名稱 + 連結</button>
+      <div id="uploadStatus" class="status">等待中</div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>影片名稱</th>
+            <th>狀態</th>
+            <th>連結</th>
+          </tr>
+        </thead>
+        <tbody id="resultsBody">
+          <tr><td colspan="3" class="small">還沒有結果</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const STORAGE_KEY = "yt_uploader_settings_v1";
+    const SCOPE = "https://www.googleapis.com/auth/youtube.upload";
+
+    const state = {
+      tokenClient: null,
+      accessToken: "",
+      queue: [],
+      results: []
+    };
+
+    const el = {
+      clientId: document.getElementById("clientId"),
+      defaultPrivacy: document.getElementById("defaultPrivacy"),
+      defaultDescription: document.getElementById("defaultDescription"),
+      authBtn: document.getElementById("authBtn"),
+      revokeBtn: document.getElementById("revokeBtn"),
+      authStatus: document.getElementById("authStatus"),
+      videoInput: document.getElementById("videoInput"),
+      applyDefaultsBtn: document.getElementById("applyDefaultsBtn"),
+      clearBtn: document.getElementById("clearBtn"),
+      queueStatus: document.getElementById("queueStatus"),
+      queue: document.getElementById("queue"),
+      uploadBtn: document.getElementById("uploadBtn"),
+      copyBtn: document.getElementById("copyBtn"),
+      uploadStatus: document.getElementById("uploadStatus"),
+      resultsBody: document.getElementById("resultsBody")
+    };
+
+    function saveSettings() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        clientId: el.clientId.value.trim(),
+        defaultPrivacy: el.defaultPrivacy.value,
+        defaultDescription: el.defaultDescription.value
+      }));
+    }
+
+    function loadSettings() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return;
+        const s = JSON.parse(raw);
+        el.clientId.value = s.clientId || "";
+        el.defaultPrivacy.value = s.defaultPrivacy || "unlisted";
+        el.defaultDescription.value = s.defaultDescription || "";
+      } catch {}
+    }
+
+    function setStatus(node, text, cls = "") {
+      node.className = "status" + (cls ? " " + cls : "");
+      node.textContent = text;
+    }
+
+    function stripExt(name) {
+      return name.replace(/\.[^.]+$/, "");
+    }
+
+    function formatBytes(bytes) {
+      const u = ["B","KB","MB","GB"];
+      let i = 0, n = bytes;
+      while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+      return `${n.toFixed(i === 0 ? 0 : 1)} ${u[i]}`;
+    }
+
+    function escapeHtml(s) {
+      return String(s)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    }
+
+    function defaultItem(file) {
+      return {
+        id: crypto.randomUUID(),
+        file,
+        title: stripExt(file.name),
+        description: el.defaultDescription.value.trim(),
+        privacyStatus: el.defaultPrivacy.value,
+        progress: 0,
+        status: "待上傳",
+        link: "",
+        videoId: "",
+        error: ""
+      };
+    }
+
+    function renderQueue() {
+      if (!state.queue.length) {
+        el.queue.innerHTML = "";
+        setStatus(el.queueStatus, "尚未加入影片");
+        return;
+      }
+
+      const total = state.queue.reduce((sum, x) => sum + x.file.size, 0);
+      setStatus(el.queueStatus, `共 ${state.queue.length} 支影片，總大小 ${formatBytes(total)}`);
+
+      el.queue.innerHTML = "";
+      for (const item of state.queue) {
+        const row = document.createElement("div");
+        row.className = "row";
+        row.innerHTML = `
+          <div class="row-grid">
+            <div>
+              <label>
+                影片標題
+                <input type="text" data-id="${item.id}" data-key="title" value="${escapeHtml(item.title)}">
+              </label>
+              <label>
+                影片說明
+                <textarea data-id="${item.id}" data-key="description">${escapeHtml(item.description)}</textarea>
+              </label>
+              <div class="meta">${escapeHtml(item.file.name)} · ${formatBytes(item.file.size)}</div>
+            </div>
+            <div>
+              <label>
+                瀏覽權限
+                <select data-id="${item.id}" data-key="privacyStatus">
+                  <option value="public" ${item.privacyStatus === "public" ? "selected" : ""}>公開</option>
+                  <option value="unlisted" ${item.privacyStatus === "unlisted" ? "selected" : ""}>不公開</option>
+                  <option value="private" ${item.privacyStatus === "private" ? "selected" : ""}>私人</option>
+                </select>
+              </label>
+              <button class="secondary" data-remove="${item.id}">移除</button>
+              <div class="meta">${item.status}${item.error ? " · " + item.error : ""}</div>
+              <progress max="100" value="${item.progress}"></progress>
+              ${item.link ? `<div class="meta"><a href="${escapeHtml(item.link)}" target="_blank">${escapeHtml(item.link)}</a></div>` : ""}
+            </div>
+          </div>
+        `;
+        el.queue.appendChild(row);
+      }
+    }
+
+    function renderResults() {
+      if (!state.results.length) {
+        el.resultsBody.innerHTML = `<tr><td colspan="3" class="small">還沒有結果</td></tr>`;
+        return;
+      }
+      el.resultsBody.innerHTML = state.results.map(r => `
+        <tr>
+          <td>${escapeHtml(r.title)}</td>
+          <td>${escapeHtml(r.status)}</td>
+          <td>${r.link ? `<a href="${escapeHtml(r.link)}" target="_blank">${escapeHtml(r.link)}</a>` : "-"}</td>
+        </tr>
+      `).join("");
+    }
+
+    function bindQueueEvents() {
+      el.queue.addEventListener("input", e => {
+        const id = e.target.dataset.id;
+        const key = e.target.dataset.key;
+        if (!id || !key) return;
+        const item = state.queue.find(x => x.id === id);
+        if (!item) return;
+        item[key] = e.target.value;
+      });
+
+      el.queue.addEventListener("click", e => {
+        const id = e.target.dataset.remove;
+        if (!id) return;
+        state.queue = state.queue.filter(x => x.id !== id);
+        renderQueue();
+      });
+    }
+
+    function initAuth() {
+      const clientId = el.clientId.value.trim();
+      if (!clientId) {
+        setStatus(el.authStatus, "請先填入 OAuth Client ID", "error");
+        return;
+      }
+
+      saveSettings();
+
+      state.tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: clientId,
+        scope: SCOPE,
+        callback: (resp) => {
+          if (resp.error) {
+            setStatus(el.authStatus, "授權失敗：" + resp.error, "error");
+            return;
+          }
+          state.accessToken = resp.access_token;
+          setStatus(el.authStatus, "已成功連接 YouTube 上傳權限", "ok");
+        }
+      });
+
+      state.tokenClient.requestAccessToken({ prompt: "consent" });
+    }
+
+    function revokeAuth() {
+      if (!state.accessToken) return;
+      google.accounts.oauth2.revoke(state.accessToken, () => {
+        state.accessToken = "";
+        setStatus(el.authStatus, "已取消授權");
+      });
+    }
+
+    async function refreshToken() {
+      if (!state.tokenClient) throw new Error("尚未初始化授權");
+      await new Promise((resolve, reject) => {
+        state.tokenClient.callback = (resp) => {
+          if (resp.error) reject(new Error(resp.error));
+          else {
+            state.accessToken = resp.access_token;
+            resolve();
+          }
+        };
+        state.tokenClient.requestAccessToken({ prompt: "" });
+      });
+    }
+
+    async function authedFetch(url, options = {}, retry = true) {
+      const res = await fetch(url, {
+        ...options,
+        headers: {
+          ...(options.headers || {}),
+          Authorization: `Bearer ${state.accessToken}`
+        }
+      });
+      if (res.status === 401 && retry) {
+        await refreshToken();
+        return authedFetch(url, options, false);
+      }
+      return res;
+    }
+
+    async function readError(res) {
+      try {
+        const data = await res.json();
+        return data.error?.message || JSON.stringify(data);
+      } catch {
+        return `${res.status} ${res.statusText}`;
+      }
+    }
+
+    async function createSession(item) {
+      const metadata = {
+        snippet: {
+          title: item.title,
+          description: item.description
+        },
+        status: {
+          privacyStatus: item.privacyStatus
+        }
+      };
+
+      const res = await authedFetch(
+        "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json; charset=UTF-8",
+            "X-Upload-Content-Length": String(item.file.size),
+            "X-Upload-Content-Type": item.file.type || "application/octet-stream"
+          },
+          body: JSON.stringify(metadata)
+        }
+      );
+
+      if (!res.ok) throw new Error(await readError(res));
+
+      const location = res.headers.get("Location");
+      if (!location) throw new Error("找不到上傳工作階段網址");
+      return location;
+    }
+
+    async function uploadBinary(uploadUrl, item) {
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("PUT", uploadUrl, true);
+        xhr.setRequestHeader("Authorization", `Bearer ${state.accessToken}`);
+        xhr.setRequestHeader("Content-Type", item.file.type || "application/octet-stream");
+
+        xhr.upload.onprogress = (e) => {
+          if (!e.lengthComputable) return;
+          item.progress = Math.round((e.loaded / e.total) * 100);
+          item.status = "上傳中";
+          renderQueue();
+        };
+
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const data = JSON.parse(xhr.responseText);
+              resolve(data);
+            } catch {
+              reject(new Error("無法解析 YouTube 回傳資料"));
+            }
+          } else {
+            reject(new Error(xhr.responseText || `Upload failed: ${xhr.status}`));
+          }
+        };
+
+        xhr.onerror = () => reject(new Error("影片上傳失敗"));
+        xhr.send(item.file);
+      });
+    }
+
+    async function uploadAll() {
+      if (!state.accessToken) {
+        setStatus(el.uploadStatus, "請先完成 Google 授權", "error");
+        return;
+      }
+      if (!state.queue.length) {
+        setStatus(el.uploadStatus, "請先加入影片", "error");
+        return;
+      }
+
+      state.results = [];
+      renderResults();
+
+      let success = 0;
+
+      for (let i = 0; i < state.queue.length; i++) {
+        const item = state.queue[i];
+        item.progress = 0;
+        item.error = "";
+        item.status = "建立上傳工作階段";
+        renderQueue();
+
+        try {
+          setStatus(el.uploadStatus, `正在上傳第 ${i + 1} / ${state.queue.length} 支：${item.title}`, "warn");
+          const uploadUrl = await createSession(item);
+          const data = await uploadBinary(uploadUrl, item);
+
+          item.status = "已完成";
+          item.progress = 100;
+          item.videoId = data.id;
+          item.link = `https://youtu.be/${data.id}`;
+          success++;
+        } catch (err) {
+          item.status = "失敗";
+          item.error = err.message || String(err);
+        }
+
+        state.results.push({
+          title: item.title,
+          status: item.status,
+          link: item.link,
+          videoId: item.videoId
+        });
+
+        renderQueue();
+        renderResults();
+      }
+
+      setStatus(el.uploadStatus, `批次上傳完成。成功 ${success} 支，失敗 ${state.queue.length - success} 支。`, success === state.queue.length ? "ok" : "warn");
+    }
+
+    async function copyResults() {
+      const text = state.results
+        .filter(x => x.link)
+        .map(x => `${x.title}\n${x.link}`)
+        .join("\n\n");
+
+      if (!text) {
+        setStatus(el.uploadStatus, "還沒有可複製的結果", "warn");
+        return;
+      }
+
+      await navigator.clipboard.writeText(text);
+      setStatus(el.uploadStatus, "已複製影片名稱 + 連結", "ok");
+    }
+
+    el.videoInput.addEventListener("change", e => {
+      const files = [...e.target.files];
+      if (!files.length) return;
+      state.queue.push(...files.map(defaultItem));
+      renderQueue();
+      e.target.value = "";
+    });
+
+    el.applyDefaultsBtn.addEventListener("click", () => {
+      for (const item of state.queue) {
+        item.privacyStatus = el.defaultPrivacy.value;
+        item.description = el.defaultDescription.value.trim();
+      }
+      renderQueue();
+    });
+
+    el.clearBtn.addEventListener("click", () => {
+      state.queue = [];
+      renderQueue();
+    });
+
+    el.authBtn.addEventListener("click", initAuth);
+    el.revokeBtn.addEventListener("click", revokeAuth);
+    el.uploadBtn.addEventListener("click", uploadAll);
+    el.copyBtn.addEventListener("click", copyResults);
+
+    el.clientId.addEventListener("change", saveSettings);
+    el.defaultPrivacy.addEventListener("change", saveSettings);
+    el.defaultDescription.addEventListener("change", saveSettings);
+
+    loadSettings();
+    bindQueueEvents();
+    renderQueue();
+    renderResults();
+  </script>
+</body>
+</html>
