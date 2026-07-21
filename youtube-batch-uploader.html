@@ -529,18 +529,18 @@
     async function copyResults() {
       const text = state.results
         .filter(x => x.link)
-        .map(x => `${x.title}\n${x.link}`)
-        .join("\n\n");
-
+        .map(x => `${x.title}\t${x.link}`)
+        .join("\n");
+    
       if (!text) {
         setStatus(el.uploadStatus, "還沒有可複製的結果", "warn");
         return;
       }
-
+    
       await navigator.clipboard.writeText(text);
-      setStatus(el.uploadStatus, "已複製影片名稱 + 連結", "ok");
+      setStatus(el.uploadStatus, "已複製影片名稱 + 連結，可直接貼到 Excel A、B 欄", "ok");
     }
-
+    
     el.videoInput.addEventListener("change", e => {
       const files = [...e.target.files];
       if (!files.length) return;
